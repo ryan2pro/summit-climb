@@ -1,0 +1,149 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 38 52% 90%; /* paper */
+    --foreground: 33 32% 14%; /* ink */
+    --card: 40 45% 83%;
+    --card-foreground: 33 32% 14%;
+    --popover: 40 45% 83%;
+    --popover-foreground: 33 32% 14%;
+    --primary: 20 63% 53%; /* terracotta */
+    --primary-foreground: 40 33% 94%;
+    --secondary: 40 45% 83%;
+    --secondary-foreground: 33 32% 14%;
+    --muted: 40 30% 80%;
+    --muted-foreground: 29 22% 34%;
+    --accent: 36 78% 60%; /* amber */
+    --accent-foreground: 33 32% 14%;
+    --destructive: 9 56% 49%;
+    --destructive-foreground: 40 33% 94%;
+    --border: 38 36% 75%; /* line */
+    --input: 38 36% 75%;
+    --ring: 20 63% 53%;
+    --radius: 1rem;
+    --sidebar-background: 38 52% 90%;
+    --sidebar-foreground: 33 32% 14%;
+    --sidebar-primary: 20 63% 53%;
+    --sidebar-primary-foreground: 40 33% 94%;
+    --sidebar-accent: 36 78% 60%;
+    --sidebar-accent-foreground: 33 32% 14%;
+    --sidebar-border: 38 36% 75%;
+    --sidebar-ring: 20 63% 53%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    @apply scroll-smooth;
+  }
+  html.lenis,
+  html.lenis body {
+    height: auto;
+  }
+  .lenis.lenis-smooth {
+    scroll-behavior: auto !important;
+  }
+  body {
+    @apply bg-paper text-ink font-sans antialiased;
+    font-size: 1.0625rem;
+    line-height: 1.7;
+  }
+  ::selection {
+    background: rgba(232, 169, 76, 0.45);
+  }
+  /* Lenis smooth-scroll on touch devices should stay native */
+  @media (pointer: coarse) {
+    html.lenis {
+      scroll-behavior: auto;
+    }
+  }
+}
+
+@layer components {
+  /* Hard-shadow physical button (design.md §4) */
+  .btn-hard {
+    box-shadow: 0 4px 0 rgba(46, 36, 24, 0.9);
+    transition:
+      transform 120ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow 120ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      background-color 150ms ease,
+      color 150ms ease,
+      filter 150ms ease;
+  }
+  .btn-hard:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 0 rgba(46, 36, 24, 0.9);
+  }
+  .btn-hard:active,
+  .btn-hard[data-pressed="true"] {
+    transform: translateY(3px) scale(0.96);
+    box-shadow: 0 1px 0 rgba(46, 36, 24, 0.9);
+  }
+  .btn-hard-sm {
+    box-shadow: 0 3px 0 rgba(46, 36, 24, 0.9);
+    transition:
+      transform 120ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow 120ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      background-color 150ms ease;
+  }
+  .btn-hard-sm:active {
+    transform: translateY(2px) scale(0.97);
+    box-shadow: 0 1px 0 rgba(46, 36, 24, 0.9);
+  }
+
+  /* Dashed trail-map divider (design.md §4) */
+  .trail-divider {
+    border-top: 2px dashed #d8c7a8;
+  }
+  .trail-divider-b {
+    border-bottom: 2px dashed #d8c7a8;
+  }
+
+  /* Cards */
+  .card-warm {
+    @apply bg-paper-deep border-2 border-ink/10 shadow-card;
+    border-radius: 16px;
+    transition:
+      transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow 250ms ease;
+  }
+  .card-warm-hover:hover {
+    transform: translateY(-6px) rotate(-0.5deg);
+    box-shadow: 0 20px 40px rgba(46, 36, 24, 0.14);
+  }
+
+  /* Keyboard keycap visual */
+  .keycap {
+    @apply inline-flex items-center justify-center rounded-[14px] border-2 border-ink bg-paper px-3 font-mono font-bold text-ink;
+    min-width: 2.75rem;
+    height: 2.75rem;
+    box-shadow: 0 3px 0 rgba(46, 36, 24, 0.9);
+    transition:
+      transform 100ms ease,
+      box-shadow 100ms ease;
+    user-select: none;
+  }
+  .keycap:hover {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 rgba(46, 36, 24, 0.9);
+  }
+
+  /* Glass HUD panel */
+  .hud-glass {
+    background: rgba(24, 17, 10, 0.55);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+}
+
+@layer utilities {
+  .text-outline {
+    -webkit-text-stroke: 2px rgba(46, 36, 24, 0.9);
+  }
+}
