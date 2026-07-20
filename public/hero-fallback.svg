@@ -4,81 +4,49 @@
       <stop offset="0" stop-color="#8FB9CE"/>
       <stop offset="1" stop-color="#F6DDBB"/>
     </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#E8A94C" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#E8A94C" stop-opacity="0"/>
+    </radialGradient>
+    <g id="cloud" fill="#F6F2E9">
+      <ellipse cx="0" cy="0" rx="120" ry="42"/>
+      <ellipse cx="-82" cy="14" rx="80" ry="32"/>
+      <ellipse cx="86" cy="12" rx="86" ry="34"/>
+      <ellipse cx="8" cy="-30" rx="72" ry="34"/>
+    </g>
+    <g id="pine">
+      <rect x="-10" y="30" width="20" height="34" rx="7" fill="#8A6B4E" stroke="#2E2418" stroke-width="2.5"/>
+      <path d="M0 -78 L54 4 L-54 4 Z" fill="#6F8F67" stroke="#2E2418" stroke-width="2.5" stroke-linejoin="round"/>
+      <path d="M0 -34 L66 34 L-66 34 Z" fill="#6F8F67" stroke="#2E2418" stroke-width="2.5" stroke-linejoin="round"/>
+    </g>
   </defs>
-  <rect x="0" y="0" width="1920" height="1080" fill="url(#sky)"/>
-  <circle cx="1520" cy="272" r="92" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <g fill="#F6F2E9">
-    <ellipse cx="255" cy="196" rx="95" ry="40"/>
-    <ellipse cx="338" cy="172" rx="82" ry="48"/>
-    <ellipse cx="425" cy="200" rx="90" ry="36"/>
-    <ellipse cx="1000" cy="136" rx="80" ry="33"/>
-    <ellipse cx="1068" cy="114" rx="72" ry="41"/>
-    <ellipse cx="1138" cy="138" rx="76" ry="30"/>
-    <ellipse cx="1596" cy="424" rx="86" ry="34"/>
-    <ellipse cx="1670" cy="400" rx="72" ry="41"/>
-    <ellipse cx="1744" cy="426" rx="80" ry="30"/>
-    <ellipse cx="582" cy="336" rx="70" ry="28"/>
-    <ellipse cx="645" cy="316" rx="60" ry="34"/>
-    <ellipse cx="702" cy="338" rx="64" ry="25"/>
+  <rect width="1920" height="1080" fill="url(#sky)"/>
+  <circle cx="1480" cy="230" r="240" fill="url(#glow)"/>
+  <circle cx="1480" cy="230" r="84" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
+  <use href="#cloud" transform="translate(330 210)"/>
+  <use href="#cloud" transform="translate(760 140) scale(0.7)"/>
+  <use href="#cloud" transform="translate(1240 330) scale(0.9)"/>
+  <use href="#cloud" transform="translate(1660 430) scale(0.6)"/>
+  <path d="M0 1080 L300 640 L520 860 L720 1080 Z" fill="#9B8571" opacity="0.45"/>
+  <path d="M1330 1080 L1600 660 L1780 830 L1920 700 L1920 1080 Z" fill="#9B8571" opacity="0.4"/>
+  <g stroke-linejoin="round">
+    <path d="M350 1080 L700 610 L960 1080 Z" fill="#9B8571"/>
+    <path d="M700 610 L960 250 L960 1080 Z" fill="#B99B7B"/>
+    <path d="M960 250 L1240 630 L960 1080 Z" fill="#C9A98A"/>
+    <path d="M1240 630 L1570 1080 L960 1080 Z" fill="#B99B7B"/>
+    <path d="M960 250 L852 428 L912 470 L968 420 L1038 476 L1098 432 Z" fill="#F6F2E9"/>
+    <path d="M700 610 L652 700 L724 726 L764 664 Z" fill="#F6F2E9" opacity="0.9"/>
+    <path d="M1240 630 L1180 716 L1262 742 L1304 676 Z" fill="#F6F2E9" opacity="0.9"/>
+    <path d="M350 1080 L960 250 L1570 1080" fill="none" stroke="#2E2418" stroke-width="2.5"/>
   </g>
-  <rect x="0" y="905" width="1920" height="175" fill="#F3EAD8"/>
-  <line x1="0" y1="905" x2="1920" y2="905" stroke="#2E2418" stroke-width="2.5"/>
-  <polygon points="960,170 360,905 1560,905" fill="#B99B7B"/>
-  <polygon points="960,170 792,512 700,905 360,905" fill="#9B8571"/>
-  <polygon points="960,170 792,512 700,905 905,905" fill="#B99B7B"/>
-  <polygon points="960,170 1116,548 1128,905 905,905" fill="#CBB091"/>
-  <polygon points="960,170 1116,548 1128,905 1560,905" fill="#B99B7B"/>
-  <polygon points="792,512 700,905 830,730" fill="#9B8571"/>
-  <polygon points="1116,548 1128,905 1250,740" fill="#9B8571"/>
-  <path d="M360,905 L960,170 L1560,905" fill="none" stroke="#2E2418" stroke-width="2.5" stroke-linejoin="round"/>
-  <polygon points="960,170 1036,302 1012,322 984,288 948,332 922,290 888,308" fill="#F6F2E9" stroke="#2E2418" stroke-width="2.5" stroke-linejoin="round"/>
-  <polygon points="1150,592 1196,560 1228,624 1196,652" fill="#F6F2E9" stroke="#2E2418" stroke-width="2.5" stroke-linejoin="round"/>
-  <polygon points="700,640 742,700 706,726 664,668" fill="#F6F2E9" stroke="#2E2418" stroke-width="2.5" stroke-linejoin="round"/>
-  <circle cx="1240" cy="868" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="1184" cy="853" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="1129" cy="838" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="1073" cy="823" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="1017" cy="807" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="961" cy="792" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="906" cy="777" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="850" cy="762" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="908" cy="738" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="966" cy="714" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="1024" cy="690" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="1082" cy="666" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="1140" cy="642" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="1084" cy="620" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="1029" cy="598" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="973" cy="576" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="918" cy="554" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="862" cy="532" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="916" cy="506" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="970" cy="480" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="1024" cy="454" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="1078" cy="428" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="1021" cy="396" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="965" cy="364" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="908" cy="332" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="939" cy="285" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <circle cx="970" cy="238" r="9" fill="#E8A94C" stroke="#2E2418" stroke-width="2.5"/>
-  <line x1="960" y1="170" x2="960" y2="96" stroke="#2E2418" stroke-width="5" stroke-linecap="round"/>
-  <polygon points="960,100 1052,122 960,144" fill="#D0713F" stroke="#2E2418" stroke-width="2.5" stroke-linejoin="round"/>
-  <rect x="142" y="882" width="16" height="30" rx="3" fill="#8A6B4E" stroke="#2E2418" stroke-width="2.5"/>
-  <polygon points="97,889 203,889 150,813" fill="#6F8F67" stroke="#2E2418" stroke-width="2.5" stroke-linejoin="round"/>
-  <polygon points="111,845 189,845 150,776" fill="#6F8F67" stroke="#2E2418" stroke-width="2.5" stroke-linejoin="round"/>
-  <rect x="249" y="889" width="11" height="21" rx="3" fill="#8A6B4E" stroke="#2E2418" stroke-width="2.5"/>
-  <polygon points="218,894 292,894 255,841" fill="#6F8F67" stroke="#2E2418" stroke-width="2.5" stroke-linejoin="round"/>
-  <polygon points="228,863 282,863 255,815" fill="#6F8F67" stroke="#2E2418" stroke-width="2.5" stroke-linejoin="round"/>
-  <rect x="343" y="885" width="14" height="26" rx="3" fill="#8A6B4E" stroke="#2E2418" stroke-width="2.5"/>
-  <polygon points="304,891 396,891 350,825" fill="#6F8F67" stroke="#2E2418" stroke-width="2.5" stroke-linejoin="round"/>
-  <polygon points="316,853 384,853 350,793" fill="#6F8F67" stroke="#2E2418" stroke-width="2.5" stroke-linejoin="round"/>
-  <rect x="1612" y="883" width="15" height="29" rx="3" fill="#8A6B4E" stroke="#2E2418" stroke-width="2.5"/>
-  <polygon points="1569,890 1671,890 1620,817" fill="#6F8F67" stroke="#2E2418" stroke-width="2.5" stroke-linejoin="round"/>
-  <polygon points="1583,848 1657,848 1620,782" fill="#6F8F67" stroke="#2E2418" stroke-width="2.5" stroke-linejoin="round"/>
-  <rect x="1720" y="890" width="10" height="20" rx="3" fill="#8A6B4E" stroke="#2E2418" stroke-width="2.5"/>
-  <polygon points="1690,894 1760,894 1725,845" fill="#6F8F67" stroke="#2E2418" stroke-width="2.5" stroke-linejoin="round"/>
-  <polygon points="1700,866 1750,866 1725,821" fill="#6F8F67" stroke="#2E2418" stroke-width="2.5" stroke-linejoin="round"/>
-  <rect x="1803" y="886" width="13" height="25" rx="3" fill="#8A6B4E" stroke="#2E2418" stroke-width="2.5"/>
-  <polygon points="1766,892 1854,892 1810,829" fill="#6F8F67" stroke="#2E2418" stroke-width="2.5" stroke-linejoin="round"/>
-  <polygon points="1778,856 1842,856 1810,799" fill="#6F8F67" stroke="#2E2418" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M830 1020 C 930 950 800 900 860 820 C 920 740 1010 760 990 660 C 970 560 900 540 940 450 C 960 400 950 330 958 292" fill="none" stroke="#E8A94C" stroke-width="9" stroke-linecap="round" stroke-dasharray="0.5 34"/>
+  <line x1="960" y1="252" x2="960" y2="150" stroke="#8A6B4E" stroke-width="7" stroke-linecap="round"/>
+  <path d="M960 150 L960 208 L1046 180 Z" fill="#D0713F" stroke="#2E2418" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M0 1016 Q 480 946 960 1010 T 1920 1004 L 1920 1080 L 0 1080 Z" fill="#F3EAD8"/>
+  <use href="#pine" transform="translate(180 1000)"/>
+  <use href="#pine" transform="translate(300 1030) scale(0.75)"/>
+  <use href="#pine" transform="translate(96 1040) scale(0.6)"/>
+  <use href="#pine" transform="translate(1620 1010) scale(0.9)"/>
+  <use href="#pine" transform="translate(1740 1036) scale(0.7)"/>
+  <use href="#pine" transform="translate(1848 1020) scale(0.55)"/>
 </svg>
