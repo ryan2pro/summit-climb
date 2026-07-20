@@ -281,7 +281,8 @@ export default function SettingsDrawer({ open, onClose }: { open: boolean; onClo
                                 layoutId="quality-indicator"
                                 className="absolute inset-0 rounded-full bg-ink"
                                 transition={{ type: 'spring', stiffness: 480, damping: 38 }}
-                              />}
+                              />
+                            )}
                             <span className="relative z-10">{q.label}</span>
                           </button>
                         );
