@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- sun dot -->
+  <circle cx="112" cy="118" r="34" fill="#E8A94C" stroke="#2E2418" stroke-width="18"/>
+  <!-- flag pole -->
+  <line x1="256" y1="176" x2="256" y2="66" stroke="#2E2418" stroke-width="18" stroke-linecap="round"/>
+  <!-- pennant -->
+  <path d="M256 62 L368 92 L256 126 Z" fill="#D0713F" stroke="#2E2418" stroke-width="16" stroke-linejoin="round"/>
+  <!-- mountain body: rounded triangle -->
+  <path d="M256 148
+           C 270 148 282 158 291 174
+           L 452 398
+           C 467 422 451 452 422 452
+           L 90 452
+           C 61 452 45 422 60 398
+           L 221 174
+           C 230 158 242 148 256 148 Z"
+        fill="#B99B7B" stroke="#2E2418" stroke-width="22" stroke-linejoin="round"/>
+  <!-- rock facet -->
+  <path d="M256 208 L 330 340 L 250 452 L 168 352 Z" fill="#9B8571" opacity="0.55"/>
+  <path d="M256 208 L 330 340 L 380 452 L 250 452 Z" fill="#8A7D76" opacity="0.45"/>
+  <!-- snowcap with wavy bottom -->
+  <path d="M256 150
+           C 268 150 279 159 287 173
+           L 322 238
+           C 306 226 296 252 282 240
+           C 268 228 262 254 248 242
+           C 234 230 226 252 212 240
+           L 225 173
+           C 233 159 244 150 256 150 Z"
+        fill="#F6F2E9" stroke="#2E2418" stroke-width="18" stroke-linejoin="round"/>
+</svg>
