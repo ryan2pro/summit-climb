@@ -27,6 +27,10 @@ export type GamePhase = 'boot' | 'ready' | 'playing' | 'summit';
 export interface HudData {
   stamina: number;
   hanging: boolean;
+  /** exhaustion slide in progress (scraping down the wall) */
+  sliding: boolean;
+  /** a hanging teammate below is in helping-hand range */
+  helpAvailable: boolean;
   exhausted: boolean;
   canGrab: boolean;
   altitude: number;
@@ -263,7 +267,7 @@ function ReadyGate({ isMobile, onStart }: { isMobile: boolean; onStart: () => vo
           <h2 className="mt-1 font-zh text-3xl text-snow">准备攀登</h2>
         </div>
         {isMobile ? (
-          <p className="text-sm leading-relaxed text-snow/80">左摇杆移动 · 右侧拖动视角 · 按住抓取</p>
+          <p className="text-sm leading-relaxed text-snow/80">左摇杆移动 · 右侧拖动视角 · 按住抓取攀爬陡壁 · 悬挂时点「跳」上跃 · 队友在下方时长按「拉手」</p>
         ) : (
           <>
             <p className="text-sm text-snow/80">点击画面锁定鼠标</p>
@@ -284,7 +288,14 @@ function ReadyGate({ isMobile, onStart }: { isMobile: boolean; onStart: () => vo
               <motion.span initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.4, type: 'spring', stiffness: 500, damping: 22 }}>
                 <Keycap>E</Keycap>
               </motion.span>
+              <motion.span initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.45, type: 'spring', stiffness: 500, damping: 22 }}>
+                <Keycap>Shift</Keycap>
+              </motion.span>
+              <motion.span initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.5, type: 'spring', stiffness: 500, damping: 22 }}>
+                <Keycap>RMB</Keycap>
+              </motion.span>
             </div>
+            <p className="text-xs leading-relaxed text-snow/60">按住 E 攀爬任意陡壁 · Shift 地面冲刺/悬挂上跃 · RMB 拉队友一把</p>
           </>
         )}
         <button
@@ -316,11 +327,18 @@ function Crosshair({ hud }: { hud: RefObject<HudData> }) {
     const frac = Math.max(0, Math.min(1, d.stamina / 100));
     arc.style.strokeDashoffset = String(RING_C * (1 - frac));
     const low = d.stamina < 25;
-    arc.style.stroke = d.exhausted ? '#C84B31' : low ? '#C84B31' : '#E8A94C';
-    wrap.style.transform = `translate(-50%,-50%) scale(${d.canGrab ? 1.23 : 1})`;
-    wrap.style.opacity = d.exhausted ? (Math.floor(performance.now() / 120) % 2 === 0 ? '0.45' : '1') : '1';
-    wrap.style.animation = low && !d.exhausted ? 'hud-breathe 1s ease-in-out infinite' : 'none';
-    if (labelRef.current) labelRef.current.style.opacity = d.canGrab ? '1' : '0';
+    arc.style.stroke = d.sliding || d.exhausted || low ? '#C84B31' : '#E8A94C';
+    wrap.style.transform = `translate(-50%,-50%) scale(${d.canGrab ? 1.23 : d.sliding ? 1.18 : 1})`;
+    wrap.style.opacity = d.exhausted || d.sliding ? (Math.floor(performance.now() / 120) % 2 === 0 ? '0.45' : '1') : '1';
+    wrap.style.animation = low && !d.exhausted && !d.sliding ? 'hud-breathe 1s ease-in-out infinite' : 'none';
+    if (labelRef.current) {
+      const label = labelRef.current;
+      const show = d.canGrab || d.sliding;
+      label.style.opacity = show ? '1' : '0';
+      const text = d.sliding ? '打滑！' : '可抓取';
+      if (label.textContent !== text) label.textContent = text;
+      label.style.background = d.sliding ? 'rgba(200,75,49,0.9)' : '';
+    }
   });
   return (
     <>
@@ -555,7 +573,7 @@ function KeyHints({ hud }: { hud: RefObject<HudData> }) {
   });
   return (
     <div ref={ref} className="pointer-events-none absolute bottom-5 left-5 z-20 flex gap-2 transition-opacity duration-700">
-      {['WASD 移动', 'Space 跳', '按住 E 抓取'].map((t) => (
+      {['WASD 移动', 'Space 跳', '按住 E 攀爬陡壁', 'Shift 冲刺·上跃', 'RMB 援手'].map((t) => (
         <span key={t} className="hud-glass rounded-full px-3 py-1.5 font-mono text-xs text-snow/85">
           {t}
         </span>
@@ -624,6 +642,7 @@ function MobileControls({ hud, input }: { hud: RefObject<HudData>; input: InputM
   const grabArcRef = useRef<SVGCircleElement>(null);
   const grabPulseRef = useRef<HTMLDivElement>(null);
   const grabBtnRef = useRef<HTMLButtonElement>(null);
+  const helpBtnRef = useRef<HTMLButtonElement>(null);
   const wasHanging = useRef(false);
   const GRAB_R = 36;
   const GRAB_C = 2 * Math.PI * GRAB_R;
@@ -657,6 +676,10 @@ function MobileControls({ hud, input }: { hud: RefObject<HudData>; input: InputM
     }
     wasHanging.current = d.hanging;
     if (grabBtnRef.current) grabBtnRef.current.style.opacity = d.exhausted ? '0.55' : '1';
+    if (helpBtnRef.current) {
+      // 拉手 context button: only when a hanging teammate below is in range
+      helpBtnRef.current.style.display = d.helpAvailable ? 'flex' : 'none';
+    }
   });
 
   return (
@@ -726,6 +749,24 @@ function MobileControls({ hud, input }: { hud: RefObject<HudData>; input: InputM
           style={{ touchAction: 'none' }}
         >
           跳
+        </button>
+        {/* 拉手 (helping hand) — appears when a hanging teammate is below */}
+        <button
+          ref={helpBtnRef}
+          type="button"
+          aria-label="拉手"
+          onContextMenu={(e) => e.preventDefault()}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            input.setTouchHelp(true);
+          }}
+          onPointerUp={() => input.setTouchHelp(false)}
+          onPointerCancel={() => input.setTouchHelp(false)}
+          onPointerLeave={() => input.setTouchHelp(false)}
+          className="-mb-2 -ml-4 hidden h-16 w-16 items-center justify-center rounded-full border-2 border-amber/70 bg-amber/30 text-base font-bold text-snow backdrop-blur-md transition-transform active:scale-90 active:bg-amber/50"
+          style={{ touchAction: 'none', display: 'none' }}
+        >
+          拉手
         </button>
       </div>
     </>
