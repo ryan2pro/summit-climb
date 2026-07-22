@@ -214,4 +214,38 @@ describe('world: generation invariants + performance', () => {
     const hit = worldA.grabRaycast(new THREE.Vector3(0, MOUNTAIN_H + 30, 0), new THREE.Vector3(0, 1, 0), 2.4);
     expect(hit).toBeNull();
   });
+
+  it('wallProbe hits steep terrain (normal.y < 0.6) from outside the wall', () => {
+    // find a steep face away from holds and aim at it along its normal
+    let tested = 0;
+    for (let r = 30; r < 120 && tested === 0; r += 2) {
+      for (let a = 0; a < Math.PI * 2; a += 0.12) {
+        const x = Math.cos(a) * r;
+        const z = Math.sin(a) * r;
+        if (worldA.slopeAt(x, z) < 2) continue;
+        const n = worldA.normalAt(x, z, new THREE.Vector3());
+        const origin = new THREE.Vector3(x, worldA.heightAt(x, z), z).addScaledVector(n, 2);
+        const hit = worldA.wallProbe(origin, n.clone().negate(), 2.6);
+        expect(hit).not.toBeNull();
+        expect(hit!.kind).toBe('wall');
+        expect(hit!.normal.y).toBeLessThan(0.6);
+        expect(hit!.dist).toBeLessThanOrEqual(2.6);
+        tested++;
+        break;
+      }
+    }
+    expect(tested).toBe(1);
+  });
+
+  it('wallProbe misses shallow/walkable slopes and open sky', () => {
+    // summit plateau: horizontal ray stays above the flat ground
+    const flat = worldA.wallProbe(new THREE.Vector3(0, MOUNTAIN_H + 1.5, 0), new THREE.Vector3(1, 0, 0), 2.6);
+    expect(flat).toBeNull();
+    // aiming straight down at the plateau: contact exists but is walkable
+    const down = worldA.wallProbe(new THREE.Vector3(0, MOUNTAIN_H + 2, 0), new THREE.Vector3(0, -1, 0), 2.6);
+    expect(down).toBeNull();
+    // open sky
+    const sky = worldA.wallProbe(new THREE.Vector3(0, MOUNTAIN_H + 30, 0), new THREE.Vector3(0, 1, 0), 2.6);
+    expect(sky).toBeNull();
+  });
 });

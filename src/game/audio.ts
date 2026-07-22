@@ -106,6 +106,19 @@ export class GameAudio {
   exhausted(): void {
     this.blip(110, 0.4, 'sawtooth', 0.14, 70);
   }
+  /** exhaustion slide: gritty descending scrape */
+  slide(): void {
+    this.blip(320, 0.5, 'sawtooth', 0.1, 90);
+  }
+  /** lunge boost: short rising chirp */
+  lunge(): void {
+    this.blip(300, 0.16, 'triangle', 0.18, 620);
+  }
+  /** helping hand: soft two-note lift */
+  pull(): void {
+    this.blip(440, 0.12, 'sine', 0.18);
+    window.setTimeout(() => this.blip(560, 0.18, 'sine', 0.18), 100);
+  }
   summit(): void {
     const notes = [523, 659, 784, 1046];
     notes.forEach((n, i) => window.setTimeout(() => this.blip(n, 0.34, 'triangle', 0.24), i * 130));
