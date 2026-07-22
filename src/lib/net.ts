@@ -57,6 +57,7 @@ export type EventType =
   | 'summit'
   | 'respawn'
   | 'leave'
+  | 'pull'
   | 'ping'
   | 'pong';
 
@@ -509,6 +510,15 @@ export class RoomSession {
   /** Host only: notify that a peer reached a checkpoint, summit, etc. */
   sendEmote(e: EmoteKind): void {
     this.sendEvent({ t: 'emote', id: this.id, e });
+  }
+
+  /**
+   * Helping hand (援手): ask `target` to glide up to your position. Sent on
+   * the reliable events channel; the host relays it like any other event,
+   * and the target client animates the pull (authority of own position).
+   */
+  sendPull(target: PlayerId): void {
+    this.sendEvent({ t: 'pull', id: this.id, target });
   }
 
   /* ---------------------------- heartbeat ---------------------------- */
