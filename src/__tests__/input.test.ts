@@ -9,7 +9,7 @@ import type { FrameInput } from '@/game/player';
 
 let canvas: HTMLCanvasElement;
 let im: InputManager;
-const out: FrameInput = { moveX: 0, moveY: 0, jump: false, grab: false };
+const out: FrameInput = { moveX: 0, moveY: 0, jump: false, lunge: false, sprint: false, grab: false, help: false };
 
 function key(type: 'keydown' | 'keyup', code: string): void {
   window.dispatchEvent(new KeyboardEvent(type, { code, bubbles: true }));
@@ -84,6 +84,60 @@ describe('input: keyboard mapping', () => {
     key('keydown', 'KeyR');
     expect(im.consumeRespawn()).toBe(true);
     expect(im.consumeRespawn()).toBe(false);
+  });
+
+  it('Shift: held sprint + one lunge edge', () => {
+    key('keydown', 'ShiftLeft');
+    im.frame(out);
+    expect(out.sprint).toBe(true);
+    expect(out.lunge).toBe(true);
+    im.frame(out);
+    expect(out.sprint).toBe(true); // still held
+    expect(out.lunge).toBe(false); // edge consumed
+    key('keyup', 'ShiftLeft');
+    im.frame(out);
+    expect(out.sprint).toBe(false);
+  });
+
+  it('RMB (pointer-locked) maps to help while held', () => {
+    im.pointerLocked = true;
+    canvas.dispatchEvent(new MouseEvent('mousedown', { button: 2, bubbles: true }));
+    im.frame(out);
+    expect(out.help).toBe(true);
+    window.dispatchEvent(new MouseEvent('mouseup', { button: 2, bubbles: true }));
+    im.frame(out);
+    expect(out.help).toBe(false);
+  });
+
+  it('mobile 跳 while hanging = lunge (not jump); on the ground = jump', () => {
+    const c2 = document.createElement('canvas');
+    document.body.appendChild(c2);
+    const mob = new InputManager(c2, true);
+    mob.attach();
+    try {
+      mob.hanging = true;
+      mob.pressJump();
+      mob.frame(out);
+      expect(out.lunge).toBe(true);
+      expect(out.jump).toBe(false);
+      mob.hanging = false;
+      mob.pressJump();
+      mob.frame(out);
+      expect(out.jump).toBe(true);
+      expect(out.lunge).toBe(false);
+    } finally {
+      mob.dispose();
+      c2.remove();
+    }
+  });
+
+  it('mobile 拉手 button maps to help while held', () => {
+    im.setTouchHelp(true);
+    im.frame(out);
+    expect(out.help).toBe(true);
+    im.setTouchHelp(false);
+    im.frame(out);
+    expect(out.help).toBe(false);
   });
 
   it('window blur clears held keys (no stuck movement)', () => {
