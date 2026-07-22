@@ -46,10 +46,47 @@ interface RemoteEntry {
   walkPhase: number;
   lastX: number;
   lastZ: number;
+  /** latest interpolated pose (helping-hand targeting) */
+  curX: number;
+  curY: number;
+  curZ: number;
+  curF: number;
 }
 
 const INTERP_DELAY = 0.12;
 const SNAP_KEEP = 1.2;
+
+/* ---------------------------- helping hand ---------------------------- */
+
+export interface HelpCandidate {
+  id: PlayerId;
+  x: number;
+  y: number;
+  z: number;
+  hanging: boolean;
+}
+
+/**
+ * PEAK helping hand: pick the nearest hanging teammate within `maxDist`,
+ * at least 1m below you. Pure + deterministic — unit-testable without RTC.
+ */
+export function findHelpTarget(
+  self: { x: number; y: number; z: number },
+  candidates: HelpCandidate[],
+  maxDist: number,
+): HelpCandidate | null {
+  let best: HelpCandidate | null = null;
+  let bestD = maxDist;
+  for (const c of candidates) {
+    if (!c.hanging) continue;
+    if (self.y - c.y < 1) continue; // must be clearly below you
+    const d = Math.hypot(c.x - self.x, c.y - self.y, c.z - self.z);
+    if (d > bestD) continue;
+    bestD = d;
+    best = c;
+  }
+  return best;
+}
 
 /* shared geometries across all avatars */
 const GEO = {
@@ -277,6 +314,10 @@ function buildAvatar(info: PlayerInfo): RemoteEntry {
     walkPhase: 0,
     lastX: 0,
     lastZ: 0,
+    curX: 0,
+    curY: 0,
+    curZ: 0,
+    curF: 0,
   };
 }
 
@@ -341,6 +382,13 @@ export class RemoteManager {
     e.bubbleMat.needsUpdate = true;
     e.bubbleStart = performance.now() / 1000;
     e.bubbleUntil = e.bubbleStart + 2;
+  }
+
+  /** latest interpolated pose; null if the player has no snapshots yet */
+  getPose(id: PlayerId): HelpCandidate | null {
+    const e = this.entries.get(id);
+    if (!e || e.leavingAt >= 0 || e.snaps.length === 0) return null;
+    return { id, x: e.curX, y: e.curY, z: e.curZ, hanging: (e.curF & 2) !== 0 };
   }
 
   getAltitude(id: PlayerId): number | null {
@@ -410,6 +458,10 @@ export class RemoteManager {
       e.group.position.set(px, py, pz);
       e.group.rotation.y = ry;
       e.altitude = py;
+      e.curX = px;
+      e.curY = py;
+      e.curZ = pz;
+      e.curF = f;
 
       // pose from flags (1=moving 2=hanging 4=exhausted 8=falling)
       const hanging = (f & 2) !== 0;
