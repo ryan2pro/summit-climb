@@ -238,6 +238,7 @@ describe('net: protocol message serialization', () => {
     ['start', { t: 'start', seed: 4294967295 }],
     ['state', { t: 'state', id: 'j1', p: [1.5, -2.25, 3], ry: 0.5, pitch: -0.2, f: 3, s: 88 } satisfies RemoteState & { t: string }],
     ['emote', { t: 'emote', id: 'j1', e: 'cheer' }],
+    ['pull', { t: 'pull', id: 'j1', target: 'j2' }],
     ['checkpoint', { t: 'checkpoint', id: 'j1', index: 2 }],
     ['summit', { t: 'summit', id: 'j1', timeMs: 75432 }],
     ['respawn', { t: 'respawn', id: 'j1' }],
@@ -252,7 +253,7 @@ describe('net: protocol message serialization', () => {
 
   it('covers every documented event type', () => {
     const types = new Set(cases.map(([, m]) => m.t));
-    for (const t of ['hello', 'roster', 'start', 'state', 'emote', 'checkpoint', 'summit', 'respawn', 'leave', 'ping', 'pong']) {
+    for (const t of ['hello', 'roster', 'start', 'state', 'emote', 'checkpoint', 'summit', 'respawn', 'leave', 'pull', 'ping', 'pong']) {
       expect(types.has(t)).toBe(true);
     }
   });
@@ -331,6 +332,31 @@ describe('net: RoomSession over mocked RTC (star topology)', () => {
     host.startGame(20260718);
     expect(j1Events.some((m) => m.t === 'start' && m.seed === 20260718)).toBe(true);
     expect(j2Events.some((m) => m.t === 'start' && m.seed === 20260718)).toBe(true);
+  });
+
+  it('relays a helping-hand pull: host relays, target receives, sender gets no echo', async () => {
+    const host = track(RoomSession.host(PROFILE_HOST));
+    const hostEvents: [NetMessage, string][] = [];
+    host.on({ onEvent: (m, from) => hostEvents.push([m, from]) });
+    const j1 = await connectJoiner(host, PROFILE_A);
+    const j2 = await connectJoiner(host, PROFILE_B);
+    const j1Events: NetMessage[] = [];
+    const j2Events: NetMessage[] = [];
+    j1.on({ onEvent: (m) => j1Events.push(m) });
+    j2.on({ onEvent: (m) => j2Events.push(m) });
+
+    j1.sendPull(j2.id);
+    expect(hostEvents).toHaveLength(1);
+    expect(hostEvents[0][0]).toMatchObject({ t: 'pull', id: j1.id, target: j2.id });
+    expect(hostEvents[0][1]).toBe(j1.id);
+    expect(j2Events).toHaveLength(1);
+    expect(j2Events[0]).toMatchObject({ t: 'pull', id: j1.id, target: j2.id });
+    expect(j1Events).toHaveLength(0);
+
+    // the host can pull too — broadcast reaches both joiners
+    host.sendPull(j1.id);
+    expect(j1Events.at(-1)).toMatchObject({ t: 'pull', id: host.id, target: j1.id });
+    expect(j2Events.at(-1)).toMatchObject({ t: 'pull', id: host.id, target: j1.id });
   });
 
   it('routes 15Hz-style state snapshots over the unreliable channel + host relay', async () => {
