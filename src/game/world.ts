@@ -82,7 +82,8 @@ export interface Ledge {
 }
 
 export interface GrabHit {
-  kind: 'hold' | 'ledge';
+  /** 'wall' = bare steep terrain (PEAK-style universal climbing) */
+  kind: 'hold' | 'ledge' | 'wall';
   index: number;
   point: THREE.Vector3;
   normal: THREE.Vector3;
@@ -494,6 +495,48 @@ export class World {
       best = { kind: 'ledge', index: L.index, point: new THREE.Vector3(px, py, pz), normal: n, dist: tmin };
     }
     return best;
+  }
+
+  /**
+   * PEAK-style universal climbing probe: march the grab ray against the
+   * analytic heightfield; the first terrain contact steep enough to hold
+   * (normal.y < 0.6 ⇔ slope ≥ ~1.67) is grabbable. Deterministic: fixed
+   * 0.25m march + 4 bisection refinements, no rng.
+   */
+  wallProbe(origin: THREE.Vector3, dir: THREE.Vector3, range: number): GrabHit | null {
+    const step = 0.25;
+    let prevT = 0.05;
+    for (let t = 0.05 + step; t <= range + 1e-6; t += step) {
+      const x = origin.x + dir.x * t;
+      const y = origin.y + dir.y * t;
+      const z = origin.z + dir.z * t;
+      const clear = y - this.heightAt(x, z);
+      if (clear <= 0) {
+        // refine the surface crossing between prevT (clear) and t (inside)
+        let lo = prevT;
+        let hi = t;
+        for (let i = 0; i < 4; i++) {
+          const mid = (lo + hi) / 2;
+          const my = origin.y + dir.y * mid;
+          if (my - this.heightAt(origin.x + dir.x * mid, origin.z + dir.z * mid) > 0) lo = mid;
+          else hi = mid;
+        }
+        const ct = (lo + hi) / 2;
+        const cx = origin.x + dir.x * ct;
+        const cz = origin.z + dir.z * ct;
+        const n = this.normalAt(cx, cz, new THREE.Vector3());
+        if (n.y >= 0.6) return null; // too shallow to cling to
+        return {
+          kind: 'wall',
+          index: -1,
+          point: new THREE.Vector3(cx, origin.y + dir.y * ct, cz),
+          normal: n,
+          dist: ct,
+        };
+      }
+      prevT = t;
+    }
+    return null;
   }
 
   /** Amber emissive pulse on the currently targeted hold (§2.2). */
