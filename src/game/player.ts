@@ -6,13 +6,20 @@
  *  - collision: analytic heightfield + ledge platforms + sphere colliders
  *    (push-out, owned by World.collide). Slopes > ~49° are unwalkable —
  *    that's what the hold route is for.
- *  - GRAB: raycast 2.4m from camera center → HANG: snap to hold, gravity
- *    off, WASD traverses the wall plane (2.2 m/s, tethered 1.45m to the
- *    hold), jump = wall jump (push off along normal + up), release = drop.
- *    Moving up over a ledge rim mantles onto it.
- *  - stamina: 100 max; hang 2.5/s idle, 6/s moving; wall jump 12; ground
- *    jump 6; regen 25/s on ground (0.6s delay), 40/s on rest ledges; empty
- *    while hanging → forced release + 力竭 1.2s grab lockout.
+ *  - GRAB (PEAK-style universal climbing): raycast 2.4m at holds/ledges,
+ *    else a 2.6m terrain probe — ANY steep surface (normal.y < 0.6) is
+ *    grabbable → HANG: snap to the wall, gravity off, WASD traverses the
+ *    wall plane (2.2 m/s, tethered 1.45m to the anchor), Space = wall jump
+ *    (push off along normal + up, 12 stamina), Shift = lunge (quick +2.2m
+ *    boost along the wall, 10 stamina), release = drop. Moving up over a
+ *    ledge rim mantles onto it.
+ *  - stamina: 100 max; bare wall hang 2.5/s idle, 6/s moving; hanging on a
+ *    hold/ledge (rest spot) 0.5/s; ground sprint (Shift) ×1.5 speed, 5/s;
+ *    ground jump 6; regen 25/s on ground (0.6s delay), 40/s on rest
+ *    ledges; empty while hanging → SLIDE: ~0.8s scraping down the wall,
+ *    then release into a fall + 力竭 1.2s grab lockout.
+ *  - helping hand (multiplayer): startPull lerps the player toward a
+ *    teammate over ~0.6s; nudgeToward shifts the helper ~0.3m.
  *  - fall > 18m from apex (or 25m below checkpoint) → checkpoint rescue.
  *  - summit: grounded within 4m of the flag pole.
  */
@@ -20,7 +27,7 @@
 import * as THREE from 'three';
 import type { World, GrabHit, Ledge } from './world';
 
-export type MoveState = 'ground' | 'air' | 'hang';
+export type MoveState = 'ground' | 'air' | 'hang' | 'slide';
 
 export interface FrameInput {
   /** strafe right −1..1 */
@@ -29,14 +36,21 @@ export interface FrameInput {
   moveY: number;
   /** edge-triggered jump */
   jump: boolean;
+  /** edge-triggered lunge (Shift while hanging / mobile 跳 while hanging) */
+  lunge: boolean;
+  /** sprint held (Shift on the ground) */
+  sprint: boolean;
   /** grab held */
   grab: boolean;
+  /** helping hand held (RMB / mobile 拉手) — resolved by the game page */
+  help: boolean;
 }
 
 export interface PlayerEvents {
   onGrab: (hit: GrabHit) => void;
   onJump: () => void;
   onWallJump: () => void;
+  onLunge: () => void;
   onLand: (hard: boolean) => void;
   onCheckpoint: (ledge: Ledge) => void;
   onSummit: () => void;
@@ -49,8 +63,12 @@ export const STAM = {
   max: 100,
   hangIdle: 2.5,
   hangMove: 6,
+  /** hanging on a hold/ledge = rest spot (fixed gear, near-zero drain) */
+  restDrain: 0.5,
   wallJump: 12,
+  lunge: 10,
   groundJump: 6,
+  sprint: 5,
   regenGround: 25,
   regenLedge: 40,
   regenDelay: 0.6,
@@ -66,10 +84,20 @@ const JUMP_V = 7.2;
 const EYE = 1.55;
 const BODY_R = 0.4;
 const GRAB_RANGE = 2.4;
+/** reach of the bare-wall terrain probe (PEAK: grab near any steep face) */
+const WALL_GRAB_RANGE = 2.6;
 const TRAVERSE = 2.2;
 const TETHER = 1.45;
 const FALL_RESCUE = 18;
 const CP_FALL = 25;
+/** exhaustion slide: scrape down the wall ~0.8s before letting go */
+const SLIDE_TIME = 0.8;
+const SLIDE_SPEED = 6;
+/** lunge: +2.2m along the wall over 0.25s */
+const LUNGE_TIME = 0.25;
+const LUNGE_RISE = 2.2;
+/** ground sprint: ×1.5 top speed */
+const SPRINT_MULT = 1.5;
 /** movement/jump slope limit — terraced wall bands (~1.03) stay unwalkable */
 const WALKABLE_SLOPE = 0.95;
 /** mantle accepts slightly steeper landings (summit rim ~1.0–1.15) */
@@ -111,6 +139,15 @@ export class Player {
   private tmpC = new THREE.Vector3();
   private onLedge: Ledge | null = null;
   private groundSlope = 0;
+  /** hang on a hold/ledge (rest spot) vs bare wall */
+  private restSpot = false;
+  /** exhaustion slide / lunge / pull timers (-1 = inactive) */
+  private slideUntil = -1;
+  private lungeUntil = -1;
+  private pullStart = -1;
+  private pullDur = 0.6;
+  private pullFrom = new THREE.Vector3();
+  private pullTo = new THREE.Vector3();
   /** HUD canGrab probe (updated each substep while playing) */
   canGrab = false;
   private lastGrabProbe: GrabHit | null = null;
@@ -133,6 +170,9 @@ export class Player {
     this.falls = 0;
     this.exhaustedUntil = -1;
     this.grabCooldownUntil = 0;
+    this.slideUntil = -1;
+    this.lungeUntil = -1;
+    this.pullStart = -1;
     if (faceYaw !== undefined) this.yaw = faceYaw;
     this.pitch = 0;
   }
@@ -205,31 +245,78 @@ export class Player {
     this.stamina = 60;
     this.falls += 1;
     this.grabCooldownUntil = this._now + 0.3;
+    this.slideUntil = -1;
+    this.lungeUntil = -1;
+    this.pullStart = -1;
     this.dip = 0;
     this.dipVel = 0;
     this.events.onRespawn(auto);
   }
 
+  /** true while being pulled up by a teammate's helping hand */
+  get pulling(): boolean {
+    return this.pullStart >= 0 && this._now < this.pullStart + this.pullDur;
+  }
+
+  /**
+   * Helping hand (target side): let go and glide to `dest` over `dur`
+   * seconds — the target client stays the authority of its own position.
+   */
+  startPull(dest: THREE.Vector3, dur = 0.6): void {
+    if (this.state === 'hang' || this.state === 'slide') this.state = 'air';
+    this.vel.set(0, 0, 0);
+    this.pullFrom.copy(this.pos);
+    this.pullTo.copy(dest);
+    this.pullStart = this._now;
+    this.pullDur = dur;
+  }
+
+  /** Helping hand (helper side): the pull tugs you ~0.3m toward them. */
+  nudgeToward(target: THREE.Vector3, dist = 0.3): void {
+    const d = this.tmpV.copy(target).sub(this.pos);
+    const l = d.length();
+    if (l < 1e-4) return;
+    d.multiplyScalar(Math.min(dist, l) / l);
+    if (this.state === 'hang' || this.state === 'slide') {
+      this.sx += d.x;
+      this.sz += d.z;
+      this.anchor.add(d);
+      this.positionOnWall();
+    } else {
+      this.pos.add(d);
+    }
+  }
+
   /** Fixed 120Hz substep. `now` = accumulated sim seconds (pause-safe). */
   update(dt: number, input: FrameInput, now: number): void {
     this._now = now;
+    // being pulled up by a teammate: smooth lerp, physics suspended
+    if (this.pulling) {
+      const t = (now - this.pullStart) / this.pullDur;
+      const e = t * t * (3 - 2 * t);
+      this.pos.lerpVectors(this.pullFrom, this.pullTo, e);
+      if (t >= 1 - 1e-6 || now >= this.pullStart + this.pullDur) {
+        this.pos.copy(this.pullTo);
+        this.pullStart = -1;
+        this.startFall();
+      }
+      return;
+    }
     if (this.state === 'hang') this.updateHang(dt, input);
+    else if (this.state === 'slide') this.updateSlide(dt);
     else this.updateWalk(dt, input);
 
-    // grab probe (every substep while not hanging)
-    if (this.state !== 'hang') {
+    // grab probe (every substep while not hanging): holds/ledges first,
+    // then the universal steep-wall probe (PEAK: climb any steep face)
+    if (this.state !== 'hang' && this.state !== 'slide') {
       if (input.grab && now >= this.grabCooldownUntil && now >= this.exhaustedUntil) {
-        this.getEye(this.tmpV);
-        this.getLookDir(this.tmpC);
-        const hit = this.world.grabRaycast(this.tmpV, this.tmpC, GRAB_RANGE);
+        const hit = this.probeGrab();
         this.lastGrabProbe = hit;
         this.canGrab = hit !== null;
         if (hit) this.enterHang(hit);
       } else if ((this._probeAcc += dt) > 0.1) {
         this._probeAcc = 0;
-        this.getEye(this.tmpV);
-        this.getLookDir(this.tmpC);
-        this.lastGrabProbe = this.world.grabRaycast(this.tmpV, this.tmpC, GRAB_RANGE);
+        this.lastGrabProbe = this.probeGrab();
         this.canGrab = this.lastGrabProbe !== null && now >= this.exhaustedUntil;
       }
     } else {
@@ -255,8 +342,21 @@ export class Player {
 
   private _probeAcc = 0;
 
+  /** holds/ledges (rest spots) take priority over the bare-wall probe */
+  private probeGrab(): GrabHit | null {
+    this.getEye(this.tmpV);
+    this.getLookDir(this.tmpC);
+    return (
+      this.world.grabRaycast(this.tmpV, this.tmpC, GRAB_RANGE) ??
+      this.world.wallProbe(this.tmpV, this.tmpC, WALL_GRAB_RANGE)
+    );
+  }
+
   private enterHang(hit: GrabHit): void {
     this.state = 'hang';
+    this.restSpot = hit.kind !== 'wall';
+    this.slideUntil = -1;
+    this.lungeUntil = -1;
     this.vel.set(0, 0, 0);
     this.anchor.copy(hit.point);
     if (hit.kind === 'ledge') {
@@ -293,17 +393,37 @@ export class Player {
   private updateHang(dt: number, input: FrameInput): void {
     const moving = Math.abs(input.moveX) > 0.12 || Math.abs(input.moveY) > 0.12;
     this._moving = moving;
-    this.drain((moving ? STAM.hangMove : STAM.hangIdle) * dt);
+    // rest spots (holds/ledges = fixed gear) barely drain; bare wall is work
+    this.drain((this.restSpot ? STAM.restDrain : moving ? STAM.hangMove : STAM.hangIdle) * dt);
 
     if (this.stamina <= 0) {
-      this.releaseGrab(0.4);
-      this.exhaustedUntil = this._now + 1.2;
-      this.events.onExhausted();
+      // PEAK: running out mid-climb = slide down the wall, THEN let go
+      this.startSlide();
       return;
     }
     if (!input.grab) {
       this.releaseGrab(0.25);
       return;
+    }
+    if (input.lunge && this._now >= this.lungeUntil) {
+      // lunge: quick vertical boost along the wall, costs a chunk of stamina
+      this.stamina = Math.max(0, this.stamina - STAM.lunge);
+      this.lastDrainT = this._now;
+      this.lungeUntil = this._now + LUNGE_TIME;
+      this.events.onLunge();
+    }
+    if (this._now < this.lungeUntil) {
+      // climb boost: ride the fall line up, re-anchor so the tether keeps up
+      const g = this.world.gradientAt(this.sx, this.sz, this.tmpG);
+      const m = Math.hypot(g.x, g.z);
+      if (m > 1e-4) {
+        const slope = Math.max(1.2, m);
+        const climb = ((LUNGE_RISE / LUNGE_TIME) * dt) / slope;
+        this.sx += (g.x / m) * climb;
+        this.sz += (g.z / m) * climb;
+        this.anchor.set(this.sx, this.world.heightAt(this.sx, this.sz), this.sz);
+        this.positionOnWall();
+      }
     }
     if (input.jump) {
       // wall jump: push off along the normal + up
@@ -378,6 +498,32 @@ export class Player {
     }
   }
 
+  private startSlide(): void {
+    this.state = 'slide';
+    this._moving = false;
+    this.slideUntil = this._now + SLIDE_TIME;
+    this.vel.set(0, 0, 0);
+    this.events.onExhausted();
+  }
+
+  /** SLIDE: scrape rapidly down the wall fall line, then release + lockout */
+  private updateSlide(dt: number): void {
+    const g = this.world.gradientAt(this.sx, this.sz, this.tmpG);
+    const m = Math.hypot(g.x, g.z);
+    if (m > 1e-4) {
+      const slope = Math.max(1.2, m);
+      const ds = (SLIDE_SPEED * dt) / slope;
+      this.sx -= (g.x / m) * ds;
+      this.sz -= (g.z / m) * ds;
+      this.anchor.set(this.sx, this.world.heightAt(this.sx, this.sz), this.sz);
+    }
+    this.positionOnWall();
+    if (this._now >= this.slideUntil) {
+      this.releaseGrab(0.4);
+      this.exhaustedUntil = this._now + 1.2;
+    }
+  }
+
   private updateWalk(dt: number, input: FrameInput): void {
     const wasGrounded = this.grounded;
     // camera-relative wish direction
@@ -391,6 +537,11 @@ export class Player {
       wz /= wl;
     }
     this._moving = wl > 0.12;
+
+    // sprint (Shift on the ground): ×1.5 top speed, drains 5 stamina/s
+    const sprinting = input.sprint && this.grounded && wl > 0.12 && this.stamina > 0;
+    const maxWalk = sprinting ? MAX_WALK * SPRINT_MULT : MAX_WALK;
+    if (sprinting) this.drain(STAM.sprint * dt);
 
     // steep walls are unwalkable: strip the uphill component, no footing
     // for jumps, and a gentle downhill slide (ledge platforms excepted)
@@ -432,9 +583,9 @@ export class Player {
     if (wl > 0.01) {
       const accel = this.grounded ? ACCEL : ACCEL * AIR_CTRL;
       const current = this.vel.x * wx + this.vel.z * wz;
-      const add = MAX_WALK - current;
+      const add = maxWalk - current;
       if (add > 0) {
-        const acc = Math.min(accel * dt * MAX_WALK, add);
+        const acc = Math.min(accel * dt * maxWalk, add);
         this.vel.x += wx * acc;
         this.vel.z += wz * acc;
       }
