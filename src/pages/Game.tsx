@@ -25,7 +25,8 @@ import type { World } from '@/game/world';
 import { Player } from '@/game/player';
 import type { FrameInput, PlayerEvents } from '@/game/player';
 import { InputManager } from '@/game/input';
-import { RemoteManager } from '@/game/remotes';
+import { RemoteManager, findHelpTarget } from '@/game/remotes';
+import type { HelpCandidate } from '@/game/remotes';
 import { GameAudio } from '@/game/audio';
 import { GameHud } from '@/game/hud';
 import type {
@@ -91,6 +92,8 @@ function GameRoot({ session }: { session: SessionApi }) {
   const hudRef = useRef<HudData>({
     stamina: 100,
     hanging: false,
+    sliding: false,
+    helpAvailable: false,
     exhausted: false,
     canGrab: false,
     altitude: 0,
@@ -251,7 +254,12 @@ function GameRoot({ session }: { session: SessionApi }) {
     let lastSend = 0;
     let lastUiTick = 0;
     let confettiTimer = 0;
-    const frameInput: FrameInput = { moveX: 0, moveY: 0, jump: false, grab: false };
+    const frameInput: FrameInput = { moveX: 0, moveY: 0, jump: false, lunge: false, sprint: false, grab: false, help: false };
+    // helping-hand channel state
+    let helpTarget: string | null = null;
+    let helpSince = -1;
+    let helpCooldownUntil = -1;
+    const helpCandidates: HelpCandidate[] = [];
     const lookTmp = { dx: 0, dy: 0 };
     const gyroTmp = { dx: 0, dy: 0 };
     const camPos = new THREE.Vector3(0, 10, 40);
@@ -277,6 +285,12 @@ function GameRoot({ session }: { session: SessionApi }) {
         fovKickRef.current = 4;
         const p = playerRef.current;
         if (p) worldRef.current?.burstDust(p.pos.clone().add(new THREE.Vector3(0, 1, 0)));
+      },
+      onLunge: () => {
+        audio?.lunge();
+        fovKickRef.current = 3;
+        const p = playerRef.current;
+        if (p) worldRef.current?.burstDust(p.pos.clone().add(new THREE.Vector3(0, 0.8, 0)));
       },
       onLand: (hard) => {
         audio?.land(hard);
@@ -309,9 +323,12 @@ function GameRoot({ session }: { session: SessionApi }) {
         refreshTeam();
       },
       onExhausted: () => {
-        toast('力竭！脱手了', 'danger');
-        pushPrompt('体力见底！');
+        toast('力竭！打滑坠落', 'danger');
+        pushPrompt('体力见底！往下滑了');
         audio?.exhausted();
+        audio?.slide();
+        const p = playerRef.current;
+        if (p) worldRef.current?.burstDust(p.pos.clone().add(new THREE.Vector3(0, 1, 0)));
       },
       onFallPrompt: () => {
         pushPrompt(isMobileRef.current ? '打开菜单回到营地' : '按 R 回到营地');
@@ -475,6 +492,20 @@ function GameRoot({ session }: { session: SessionApi }) {
         }
         case 'respawn':
           break;
+        case 'pull': {
+          // helping hand: I'm the target → glide up to the helper
+          const room = sessionRef.current.room;
+          const me = playerRef.current;
+          if (!room || !me || String(msg.target ?? '') !== room.id) break;
+          const fromId = String(msg.id ?? from);
+          const pose = remotes?.getPose(fromId);
+          if (!pose) break;
+          me.startPull(new THREE.Vector3(pose.x, pose.y - 1, pose.z), 0.6);
+          toast(`援手！${nameOf(fromId)} 拉了你一把`, 'success');
+          pushPrompt('援手！');
+          audio?.pull();
+          break;
+        }
         default:
           break;
       }
@@ -595,9 +626,47 @@ function GameRoot({ session }: { session: SessionApi }) {
           player.pitch += gyroTmp.dy;
           player.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, player.pitch));
 
+          input.hanging = player.state === 'hang';
           input.frame(frameInput); // consume edges every rAF
           if (simRunning) {
             if (input.consumeRespawn()) player.respawn(false);
+
+            // helping hand (援手): RMB / 拉手 → channel 0.5s → send pull
+            const roomH = sessionRef.current.room;
+            helpCandidates.length = 0;
+            if (roomH && !hostLeftRef.current && remotes) {
+              for (const rp of rosterRef.current) {
+                if (rp.id === roomH.id) continue;
+                const pose = remotes.getPose(rp.id);
+                if (pose) helpCandidates.push(pose);
+              }
+            }
+            const self = { x: player.pos.x, y: player.pos.y, z: player.pos.z };
+            // an ongoing channel tolerates up to 4m; starting needs 3.5m
+            const startCand = now >= helpCooldownUntil ? findHelpTarget(self, helpCandidates, 3.5) : null;
+            const keepCand = helpTarget ? findHelpTarget(self, helpCandidates, 4) : null;
+            hudRef.current.helpAvailable = (helpTarget ? keepCand : startCand) !== null;
+            if (frameInput.help && helpCandidates.length > 0) {
+              if (helpTarget === null) {
+                if (startCand) {
+                  helpTarget = startCand.id;
+                  helpSince = now;
+                }
+              } else if (!keepCand || keepCand.id !== helpTarget) {
+                helpTarget = null; // walked away (>4m) — cancel
+              } else if (now - helpSince >= 0.5) {
+                roomH?.sendPull(helpTarget);
+                player.nudgeToward(new THREE.Vector3(keepCand.x, keepCand.y, keepCand.z), 0.3);
+                toast(`援手！拉了 ${nameOf(helpTarget)} 一把`, 'success');
+                pushPrompt('援手！');
+                audio?.pull();
+                helpTarget = null;
+                helpCooldownUntil = now + 1.0;
+              }
+            } else {
+              helpTarget = null;
+            }
+
             acc += dt;
             const step = 1 / 120;
             let n = 0;
@@ -665,7 +734,8 @@ function GameRoot({ session }: { session: SessionApi }) {
           // hud ref writes
           const h = hudRef.current;
           h.stamina = player.stamina;
-          h.hanging = player.state === 'hang';
+          h.hanging = player.state === 'hang' || player.state === 'slide';
+          h.sliding = player.state === 'slide';
           h.exhausted = player.exhausted;
           h.canGrab = player.canGrab;
           h.altitude = player.pos.y;
