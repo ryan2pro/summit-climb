@@ -3,12 +3,15 @@
  * (design.md §11.4).
  *
  *  PC: WASD/arrows move · pointer-lock mouse look · Space jump · hold E or
- *      LMB grab · R respawn · Tab players · Esc pause (via lock exit).
+ *      LMB grab · Shift sprint on the ground / lunge while hanging ·
+ *      hold RMB helping hand · R respawn · Tab players · Esc pause.
  *  Mobile: left-half floating joystick (10% deadzone, radial clamp) ·
  *      right-half drag look · optional gyroscope look (yaw from alpha,
  *      pitch from beta/gamma per screen orientation, fused with drag as
  *      offsets; iOS requestPermission flow) · 抓取 hold-to-grab + 跳 buttons
- *      wired via setTouchGrab/pressJump.
+ *      (while hanging, 跳 = lunge boost) + 拉手 helping-hand button wired
+ *      via setTouchGrab/pressJump/setTouchHelp. `hanging` is fed back by
+ *      the game loop so mobile 跳 can mean jump-vs-lunge.
  */
 
 import type { FrameInput } from './player';
@@ -42,6 +45,8 @@ export class InputManager {
   tabHeld = false;
   gyroEnabled = false;
   gyroActive = false;
+  /** fed back by the game loop each rAF (mobile 跳 = jump vs lunge) */
+  hanging = false;
 
   readonly joystick: JoystickState = { active: false, id: -1, ox: 0, oy: 0, dx: 0, dy: 0, lastActive: 0 };
 
@@ -59,9 +64,12 @@ export class InputManager {
   private gyroLastB: number | null = null;
   private gyroLastG: number | null = null;
   private jumpEdge = false;
+  private lungeEdge = false;
   private respawnEdge = false;
   private touchGrab = false;
   private mouseGrab = false;
+  private rmbHeld = false;
+  private touchHelp = false;
   private lookTouchId = -1;
   private lookLastX = 0;
   private lookLastY = 0;
@@ -99,6 +107,11 @@ export class InputManager {
       this.respawnEdge = true;
       return;
     }
+    if (c === 'ShiftLeft' || c === 'ShiftRight') {
+      this.lungeEdge = true; // consumed as lunge only while hanging
+      this.keys.add(c);
+      return;
+    }
     if (c === 'Escape') {
       if (!this.pointerLocked) this.onPauseRequest?.();
       return;
@@ -118,11 +131,17 @@ export class InputManager {
   private onBlur = () => {
     this.keys.clear();
     this.mouseGrab = false;
+    this.rmbHeld = false;
     this.tabHeld = false;
   };
 
   private onMouseDown = (e: MouseEvent) => {
     this.markInteract();
+    if (e.button === 2) {
+      // RMB: helping hand (multiplayer) — hold to channel a pull
+      if (this.pointerLocked) this.rmbHeld = true;
+      return;
+    }
     if (e.button !== 0) return;
     if (!this.isMobile && !this.pointerLocked) {
       this.requestLock();
@@ -133,6 +152,7 @@ export class InputManager {
 
   private onMouseUp = (e: MouseEvent) => {
     if (e.button === 0) this.mouseGrab = false;
+    if (e.button === 2) this.rmbHeld = false;
   };
 
   private onMouseMove = (e: MouseEvent) => {
@@ -146,7 +166,10 @@ export class InputManager {
   private onLockChangeEvent = () => {
     const locked = document.pointerLockElement === this.canvas;
     this.pointerLocked = locked;
-    if (!locked) this.mouseGrab = false;
+    if (!locked) {
+      this.mouseGrab = false;
+      this.rmbHeld = false;
+    }
     this.onLockChange?.(locked);
   };
 
@@ -407,9 +430,15 @@ export class InputManager {
     }
     out.moveX = Math.max(-1, Math.min(1, mx));
     out.moveY = Math.max(-1, Math.min(1, my));
-    out.jump = this.jumpEdge;
+    // mobile 跳: while hanging it's the lunge boost, otherwise a jump;
+    // PC Shift is an edge-triggered lunge (hang) + held sprint (ground)
+    out.jump = this.jumpEdge && !(this.isMobile && this.hanging);
+    out.lunge = this.lungeEdge || (this.jumpEdge && this.isMobile && this.hanging);
     this.jumpEdge = false;
+    this.lungeEdge = false;
+    out.sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
     out.grab = this.keys.has('KeyE') || this.mouseGrab || this.touchGrab;
+    out.help = this.rmbHeld || this.touchHelp;
     return out;
   }
 
@@ -421,5 +450,10 @@ export class InputManager {
 
   setTouchGrab(held: boolean): void {
     this.touchGrab = held;
+  }
+
+  /** mobile 拉手 (helping hand) context button */
+  setTouchHelp(held: boolean): void {
+    this.touchHelp = held;
   }
 }
