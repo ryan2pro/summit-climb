@@ -2,10 +2,12 @@
  * Player physics — headless fixed-step (120Hz) simulation, exactly how the
  * game loop drives Player.update. No renderer involved.
  *
- * Spec anchors (design.md §11.3): stamina 100 max · hang 2.5/s idle, 6/s
- * moving · wall jump 12 · ground jump 6 · regen 25/s ground, 40/s on rest
- * ledges after a 0.6s delay · empty stamina while hanging → forced release
- * + 1.2s 力竭 grab lockout · fall > 18m → checkpoint rescue.
+ * Spec anchors (design.md §11.3, PEAK tuning): stamina 100 max · bare-wall
+ * hang 2.5/s idle, 6/s moving · hold/ledge rest spots 0.5/s · wall jump 12 ·
+ * lunge 10 (+2.2m boost) · sprint ×1.5 for 5/s · ground jump 6 · regen 25/s
+ * ground, 40/s on rest ledges after a 0.6s delay · empty stamina while
+ * hanging → 0.8s SLIDE down the wall, then release + 1.2s 力竭 grab
+ * lockout · fall > 18m → checkpoint rescue.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
@@ -13,7 +15,7 @@ import { generateWorld, type Hold, type World } from '@/game/world';
 import { Player, STAM, type FrameInput, type PlayerEvents } from '@/game/player';
 
 const DT = 1 / 120;
-const IDLE: FrameInput = { moveX: 0, moveY: 0, jump: false, grab: false };
+const IDLE: FrameInput = { moveX: 0, moveY: 0, jump: false, lunge: false, sprint: false, grab: false, help: false };
 
 function makeEvents() {
   const log: string[] = [];
@@ -21,6 +23,7 @@ function makeEvents() {
     onGrab: () => log.push('grab'),
     onJump: () => log.push('jump'),
     onWallJump: () => log.push('walljump'),
+    onLunge: () => log.push('lunge'),
     onLand: () => log.push('land'),
     onCheckpoint: () => log.push('checkpoint'),
     onSummit: () => log.push('summit'),
@@ -61,6 +64,50 @@ function aimAtHold(sim: Sim, hold: Hold, dist = 1.2): void {
   p.vel.set(0, 0, 0);
   p.state = 'air';
   const d = hold.pos.clone().sub(eye).normalize();
+  p.yaw = Math.atan2(-d.x, -d.z);
+  p.pitch = Math.asin(d.y);
+}
+
+/** Find a steep bare-wall spot (slope ≥ 2, away from holds/ledges). */
+function findSteepSpot(w: World): { x: number; z: number; n: THREE.Vector3 } {
+  const tmp = new THREE.Vector3();
+  for (let r = 30; r < 120; r += 2) {
+    for (let a = 0; a < Math.PI * 2; a += 0.12) {
+      const x = Math.cos(a) * r;
+      const z = Math.sin(a) * r;
+      if (w.slopeAt(x, z) < 2) continue;
+      const y = w.heightAt(x, z);
+      tmp.set(x, y, z);
+      let near = false;
+      for (const h of w.holds) {
+        if (h.pos.distanceToSquared(tmp) < 25) {
+          near = true;
+          break;
+        }
+      }
+      if (near) continue;
+      for (const L of w.ledges) {
+        if (L.center.distanceToSquared(tmp) < 36) {
+          near = true;
+          break;
+        }
+      }
+      if (near) continue;
+      return { x, z, n: w.normalAt(x, z, new THREE.Vector3()) };
+    }
+  }
+  throw new Error('no steep spot found');
+}
+
+/** Hover in front of a steep terrain face, camera aimed at the wall. */
+function aimAtWall(sim: Sim, spot: { x: number; z: number; n: THREE.Vector3 }, world: World, dist = 1.5): void {
+  const p = sim.player;
+  const y = world.heightAt(spot.x, spot.z);
+  const eye = new THREE.Vector3(spot.x, y, spot.z).addScaledVector(spot.n, dist);
+  p.pos.set(eye.x, eye.y - 1.55, eye.z);
+  p.vel.set(0, 0, 0);
+  p.state = 'air';
+  const d = spot.n.clone().negate().normalize();
   p.yaw = Math.atan2(-d.x, -d.z);
   p.pitch = Math.asin(d.y);
 }
@@ -172,31 +219,69 @@ describe('player: grab → hang', () => {
   });
 });
 
+describe('player: universal wall grab (PEAK)', () => {
+  it('grabs bare steep terrain — no hold needed', () => {
+    const sim = new Sim(world);
+    sim.player.spawnAt(0);
+    const spot = findSteepSpot(world);
+    aimAtWall(sim, spot, world);
+    sim.step({ grab: true });
+    const p = sim.player;
+    expect(p.state).toBe('hang');
+    expect(sim.log).toContain('grab');
+    // gravity off while hanging on the wall
+    const pos = p.pos.clone();
+    sim.step({ grab: true }, 0.5);
+    expect(p.state).toBe('hang');
+    expect(p.pos.distanceTo(pos)).toBeLessThan(1e-6);
+  });
+
+  it('does NOT grab shallow (walkable) slopes', () => {
+    const sim = new Sim(world);
+    const spot = findFlatSpot(world);
+    sim.player.pos.set(spot.x, world.heightAt(spot.x, spot.z) + 0.1, spot.z);
+    sim.player.state = 'air';
+    sim.step({}, 0.5); // land
+    expect(sim.player.state).toBe('ground');
+    // look horizontally across the flat ground and try to grab
+    sim.player.pitch = 0;
+    sim.step({ grab: true }, 0.2);
+    expect(sim.player.state).toBe('ground');
+    expect(sim.player.canGrab).toBe(false);
+  });
+});
+
 describe('player: stamina (§11.3)', () => {
-  it('drains 2.5/s while hanging idle', () => {
+  it('rest spot: drains only 0.5/s hanging on a hold (idle or moving)', () => {
     const sim = new Sim(world);
     sim.player.spawnAt(0);
     aimAtHold(sim, world.holds[3]);
     sim.step({ grab: true });
     expect(sim.player.state).toBe('hang');
     sim.step({ grab: true }, 1);
-    expect(sim.player.stamina).toBeCloseTo(STAM.max - STAM.hangIdle, 1);
+    expect(sim.player.stamina).toBeCloseTo(STAM.max - STAM.restDrain, 1);
+    // moving on fixed gear stays near-rest too
+    sim.step({ grab: true, moveX: 1 }, 1);
+    expect(sim.player.stamina).toBeCloseTo(STAM.max - STAM.restDrain * 2, 1);
   });
 
-  it('drains 6/s while traversing, and the traverse moves along the wall', () => {
+  it('bare wall: drains 2.5/s idle, 6/s traversing', () => {
     const sim = new Sim(world);
     sim.player.spawnAt(0);
-    const hold = world.holds[3];
-    aimAtHold(sim, hold);
+    const spot = findSteepSpot(world);
+    aimAtWall(sim, spot, world);
     sim.step({ grab: true });
+    expect(sim.player.state).toBe('hang');
+    sim.step({ grab: true }, 1);
+    expect(sim.player.stamina).toBeCloseTo(STAM.max - STAM.hangIdle, 1);
     const before = sim.player.pos.clone();
     sim.step({ grab: true, moveX: 1 }, 1);
     const p = sim.player;
     expect(p.state).toBe('hang');
-    expect(p.stamina).toBeCloseTo(STAM.max - STAM.hangMove, 1);
+    expect(p.stamina).toBeCloseTo(STAM.max - STAM.hangIdle - STAM.hangMove, 1);
     expect(p.pos.distanceTo(before)).toBeGreaterThan(0.3);
-    // tether: body stays near the held point (TETHER 1.45 + body offset ~0.5)
-    expect(Math.hypot(p.pos.x - hold.pos.x, p.pos.z - hold.pos.z)).toBeLessThan(1.45 + 0.51);
+    // tether: body stays near the anchor (TETHER 1.45 + body offset ~0.5)
+    expect(Math.hypot(p.pos.x - spot.x, p.pos.z - spot.z)).toBeLessThan(1.45 + 0.51);
   });
 
   it('regenerates 25/s on natural ground after the 0.6s delay', () => {
@@ -244,20 +329,28 @@ describe('player: stamina (§11.3)', () => {
     expect(vh.normalize().dot(nh)).toBeGreaterThan(0.99);
   });
 
-  it('empty stamina while hanging → forced release + ~1.2s exhaustion lockout', () => {
+  it('empty stamina while hanging → SLIDE down the wall, then release + lockout', () => {
     const sim = new Sim(world);
     sim.player.spawnAt(0);
-    const hold = world.holds[2];
-    aimAtHold(sim, hold);
+    const spot = findSteepSpot(world);
+    aimAtWall(sim, spot, world);
     sim.step({ grab: true });
     expect(sim.player.state).toBe('hang');
-    sim.player.stamina = 1;
-    // 2.5/s idle drain → empty in 0.4s → forced release
+    sim.player.stamina = 0.3;
+    // 2.5/s idle drain → empty in 0.12s → slide (not an instant release)
     for (let t = 0; t < 1 && sim.player.state === 'hang'; t += DT) sim.step({ grab: true });
     const p = sim.player;
-    expect(p.state).toBe('air');
-    expect(p.stamina).toBe(0);
+    expect(p.state).toBe('slide');
     expect(sim.log).toContain('exhausted');
+    // the slide scrapes rapidly DOWN the wall for ~0.8s
+    const y0 = p.pos.y;
+    sim.step({ grab: true }, 0.4);
+    expect(p.state).toBe('slide');
+    expect(y0 - p.pos.y).toBeGreaterThan(1);
+    sim.step({ grab: true }, 0.5);
+    expect(p.state).not.toBe('slide'); // released into a fall (or landed below)
+    expect(p.state).not.toBe('hang');
+    expect(p.stamina).toBeLessThan(5); // 0 at release; may regen a touch if it landed
     expect(p.exhausted).toBe(true);
 
     // hover in front of a hold with grab held: the lockout must block re-grab
@@ -278,6 +371,74 @@ describe('player: stamina (§11.3)', () => {
     }
     expect(p.state).toBe('hang');
     expect(p.exhausted).toBe(false);
+  });
+});
+
+describe('player: lunge (Shift while hanging)', () => {
+  it('costs 10 stamina and boosts ~2.2m up the wall', () => {
+    const sim = new Sim(world);
+    sim.player.spawnAt(0);
+    const spot = findSteepSpot(world);
+    aimAtWall(sim, spot, world);
+    sim.step({ grab: true });
+    expect(sim.player.state).toBe('hang');
+    const y0 = sim.player.pos.y;
+    sim.step({ grab: true, lunge: true }); // edge substep
+    expect(sim.log).toContain('lunge');
+    sim.step({ grab: true }, 0.35); // ride the boost out
+    const p = sim.player;
+    expect(p.state).toBe('hang');
+    expect(p.pos.y - y0).toBeGreaterThan(1.4);
+    expect(p.stamina).toBeLessThanOrEqual(STAM.max - STAM.lunge);
+    expect(p.stamina).toBeCloseTo(STAM.max - STAM.lunge - STAM.hangIdle * 0.36, 0);
+  });
+
+  it('is distinct from the wall jump (Space pushes off the wall, costs 12)', () => {
+    const sim = new Sim(world);
+    sim.player.spawnAt(0);
+    aimAtHold(sim, world.holds[4]);
+    sim.step({ grab: true });
+    sim.step({ grab: true, jump: true });
+    const p = sim.player;
+    expect(p.state).toBe('air'); // wall jump leaves the wall; lunge stays on it
+    expect(sim.log).toContain('walljump');
+    expect(p.stamina).toBeLessThan(STAM.max - STAM.lunge);
+  });
+});
+
+describe('player: sprint (Shift on the ground)', () => {
+  it('runs 1.5× top speed and drains 5 stamina/s', () => {
+    const sim = new Sim(world);
+    const spot = findFlatSpot(world);
+    sim.player.pos.set(spot.x, world.heightAt(spot.x, spot.z) + 0.1, spot.z);
+    sim.player.state = 'air';
+    sim.step({}, 0.5);
+    expect(sim.player.state).toBe('ground');
+    sim.player.yaw = 0;
+    sim.step({ moveY: 1, sprint: true }, 1);
+    const p = sim.player;
+    expect(p.horizontalSpeed).toBeGreaterThan(5.6); // walk caps at 4.8
+    expect(p.stamina).toBeCloseTo(STAM.max - STAM.sprint, 0);
+  });
+});
+
+describe('player: helping hand pull (target side)', () => {
+  it('startPull glides the player to the helper over ~0.6s', () => {
+    const sim = new Sim(world);
+    sim.player.spawnAt(0);
+    const spot = findSteepSpot(world);
+    aimAtWall(sim, spot, world);
+    sim.step({ grab: true });
+    expect(sim.player.state).toBe('hang');
+    const dest = sim.player.pos.clone().add(new THREE.Vector3(0, 4, 0));
+    sim.player.startPull(dest, 0.6);
+    sim.step({ grab: true }, 0.3);
+    expect(sim.player.pulling).toBe(true);
+    const midY = sim.player.pos.y;
+    expect(midY).toBeGreaterThan(dest.y - 4);
+    sim.step({}, 0.35);
+    expect(sim.player.pulling).toBe(false);
+    expect(sim.player.pos.distanceTo(dest)).toBeLessThan(0.2); // +0.05s of gravity after arrival
   });
 });
 
